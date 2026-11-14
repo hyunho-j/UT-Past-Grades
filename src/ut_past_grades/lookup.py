@@ -6,9 +6,9 @@ from contextlib import closing
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+from .storage import GRADES, GRADE_COLUMNS_SQL
 
 DEFAULT_DATABASE = Path(__file__).resolve().parents[2] / "ut_grades.db"
-GRADES = ("A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "D-", "F", "Other")
 TERM = r"(?:Spring|Summer|Fall|Winter)"
 SEP = r"[\s|,;:·–—-]*"
 ENTRY = re.compile(
@@ -56,18 +56,19 @@ def lookup(text: str, database: Path = DEFAULT_DATABASE, *, combine_sections: bo
     with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
         for request in requests:
             rows = connection.execute(
-                """SELECT letter_grade, SUM(student_count), course_title FROM grade_distributions
+                f"""SELECT course_title, {GRADE_COLUMNS_SQL} FROM grade_distributions
                    WHERE semester = ? AND TRIM(course_prefix) = ?
-                     AND TRIM(course_number) = ? AND TRIM(section_number) = ?
-                   GROUP BY course_title, letter_grade""",
+                     AND TRIM(course_number) = ? AND TRIM(section_number) = ?""",
                 (request.semester, request.prefix, request.number, request.section),
             ).fetchall()
             if rows:
                 counts = Counter()
-                for grade, count, _ in rows:
-                    counts[grade] += count
+                for _, *values in rows:
+                    for grade, count in zip(GRADES, values):
+                        if count:
+                            counts[grade] += count
                 found.append((request, counts))
-                titles[request] = tuple(sorted({title.strip() for _, _, title in rows}))
+                titles[request] = tuple(sorted({row[0].strip() for row in rows}))
             else:
                 missing.append(request)
     output = []

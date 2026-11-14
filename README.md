@@ -48,3 +48,14 @@ You can also run `python main.py` with a Python installation that includes Tkint
 Run verification with `python -m unittest discover -s tests -v`.
 Rebuild the combined database from all CSV grade exports in the project root with
 `python build_database.py`.
+
+The database omits the unused `department_program` column from the CSV exports
+and retains `course`. Each row stores a course section and semester, with integer
+count columns `A+`, `A`, `A-`, `B+`, `B`, `B-`, `C+`, `C`, `C-`, `D+`, `D`, `D-`,
+`F`, and `Other`. Missing grades default to zero. Duplicate counts for the same
+section details and grade are added. Section numbers and semesters remain text.
+Use double quotes for grade names in SQL, for example `SELECT "A-" FROM grade_distributions`.
+
+To convert an older database that uses `letter_grade` and `student_count` columns
+without the original CSV files, run `python build_database.py --migrate` once.
+The conversion verifies every section's grade counts before replacing the database.

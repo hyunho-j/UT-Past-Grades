@@ -7,6 +7,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from ut_past_grades.lookup import CourseRequest, lookup, parse_requests
+from ut_past_grades.storage import write_database
+
+
+def make_database(database, rows):
+    write_database((
+        (semester, section, prefix, number, title,
+         f"{prefix}-{number.strip()}: {title}, Section no. {section}", grade, count)
+        for semester, prefix, number, section, grade, count, title in rows
+    ), database)
 
 SAMPLE = """
 pull the distribution for:
@@ -69,14 +78,11 @@ class LookupTests(unittest.TestCase):
     def test_aggregation_and_zero_counts(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "grades.db"
-            with closing(sqlite3.connect(database)) as connection:
-                connection.execute("CREATE TABLE grade_distributions (semester, course_prefix, course_number, section_number, letter_grade, student_count, course_title DEFAULT 'History')")
-                connection.executemany("INSERT INTO grade_distributions (semester,course_prefix,course_number,section_number,letter_grade,student_count) VALUES (?,?,?,?,?,?)", [
-                    ("Spring 2026", "HIS", " 315K", "39345", "A", 1),
-                    ("Spring 2026", "HIS", " 315K", "39345", "A", 2),
-                    ("Spring 2026", "HIS", " 315K", "39340", "A", 0),
-                ])
-                connection.commit()
+            make_database(database, [
+                ("Spring 2026", "HIS", " 315K", "39345", "A", 1, "History"),
+                ("Spring 2026", "HIS", " 315K", "39345", "A", 2, "History"),
+                ("Spring 2026", "HIS", " 315K", "39340", "A", 0, "History"),
+            ])
             output = lookup("Spring 2026 HIS 315K 39345\nSpring 2026 HIS 315K 39340", database)
             self.assertIn("| A | 3 (100.00%) | 0 (N/A) |", " ".join(output.split()))
 
@@ -90,16 +96,13 @@ class LookupTests(unittest.TestCase):
     def test_combine_sections_by_title_and_semester(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "grades.db"
-            with closing(sqlite3.connect(database)) as connection:
-                connection.execute("CREATE TABLE grade_distributions (semester, course_prefix, course_number, section_number, letter_grade, student_count, course_title)")
-                connection.executemany("INSERT INTO grade_distributions VALUES (?,?,?,?,?,?,?)", [
+            make_database(database, [
                     ("Fall 2025", "E", " 316L", "10001", "A", 1, "British Literature"),
                     ("Fall 2025", "E", " 316L", "10001", "B", 1, "British Literature"),
                     ("Fall 2025", "E", " 316L", "10002", "A", 6, "British Literature"),
                     ("Fall 2025", "E", " 316L", "10003", "A", 10, "Different Title"),
                     ("Spring 2026", "E", " 316L", "10004", "A", 20, "British Literature"),
-                ])
-                connection.commit()
+            ])
             text = "\n".join([
                 "Fall 2025 E 316L 10001", "Fall 2025 E 316L 10002",
                 "Fall 2025 E 316L 10003", "Spring 2026 E 316L 10004",
